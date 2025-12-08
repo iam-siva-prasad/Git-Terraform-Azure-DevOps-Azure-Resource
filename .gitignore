@@ -18,8 +18,6 @@ override.tf.json
 *_override.tf.json
 
 # Ignore sensitive variable files
-terraform.tfvars
-*.tfvars
 
 # Ignore environment files
 .env
