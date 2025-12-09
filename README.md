@@ -2,7 +2,9 @@
 
 
 🚀 Azure DevOps CI/CD for Terraform Infrastructure
+
 📌 Overview
+
 This project implements a fully automated CI/CD pipeline using Azure DevOps and Terraform to provision and manage Azure resources securely and efficiently.
 ✅ Key Features
 
