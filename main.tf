@@ -6,11 +6,11 @@ locals {
   }
 }
 
-resource "azurerm_resource_group" "rg" {
-  name     = var.resource_group_name
-  location = var.location
-  tags     = local.tags
-}
+// resource "azurerm_resource_group" "rg" {
+//   name     = var.resource_group_name
+//   location = var.location
+//   tags     = local.tags
+// }
 
 resource "azurerm_virtual_network" "vnet" {
   name                = "${var.project_name}-vnet"
@@ -51,7 +51,7 @@ resource "azurerm_public_ip" "pip" {
   name                = "${var.project_name}-pip"
   location            = var.location
   resource_group_name = var.resource_group_name
-  allocation_method   = "Dynamic"
+  allocation_method   = "Static" 
   sku                 = "Standard"
   tags                = local.tags
 }
