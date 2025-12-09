@@ -9,7 +9,7 @@ This project implements a fully automated CI/CD pipeline using Azure DevOps and 
 ✅ Key Features
 
 
-Continuous Integration (CI)
+**Continuous Integration (CI)**
 
 Automatically triggered when changes are pushed and merged into the main branch in Azure Repos.
 Runs Terraform validate and plan to ensure code quality and generate an execution plan.
@@ -17,7 +17,7 @@ Publishes the plan as an artifact for review.
 
 
 
-Continuous Delivery (CD)
+**Continuous Delivery (CD)**
 
 Includes approval gates for compliance and change control.
 Applies the validated Terraform plan to Azure resources after approval.
@@ -26,7 +26,7 @@ Ensures deployments are predictable and auditable.
 
 
 
-🏗️ Architecture
+**🏗️ Architecture**
 
 Source Control: Azure Repos (Git)
 Pipeline: Azure DevOps YAML pipeline
@@ -36,7 +36,7 @@ Secrets Management: Azure DevOps secure pipeline variables (or Azure Key Vault)
 Environment Approvals: Azure DevOps Environments for gated deployments
 
 
-🔐 Security & Compliance
+**🔐 Security & Compliance**
 
 All sensitive values (client IDs, secrets, subscription IDs, storage access keys) are stored in secure pipeline variables or Key Vault, never in code.
 RBAC enforced:
@@ -51,19 +51,19 @@ Audit logs and artifacts retained for compliance.
 
 ⚙️ Workflow
 
-Developer Workflow
+**Developer Workflow**
 
 Commit changes → Create PR → Merge to main.
 
 
-CI Stage
+**CI Stage**
 
 Triggered on main merge.
 Runs terraform init, validate, and plan.
 Publishes tfplan.out artifact.
 
 
-CD Stage
+**CD Stage**
 
 Requires approval.
 Downloads plan artifact.
@@ -72,7 +72,7 @@ Runs terraform apply using the exact plan file.
 
 
 
-✅ Benefits
+**✅ Benefits**
 
 Faster Delivery: Automates repetitive tasks, reducing manual effort.
 Improved Security: Secrets stored securely; RBAC enforced.
@@ -80,18 +80,14 @@ Compliance & Auditability: Approval gates, artifact retention, and logs provide 
 Reduced Risk: Eliminates manual errors and ensures consistent deployments.
 
 
-📦 Backend Configuration
+**📦 Backend Configuration**
+
 Terraform state is stored in Azure Storage:
 Terraformterraform {  backend "azurerm" {    resource_group_name  = "1-ae2781de-playground-sandbox"    storage_account_name = "prodstoragesiva01"    container_name       = "state-file"    key                  = "prod.terraform.tfstate"  }}Show more lines
 
-🔧 How to Use
+**🔧 How to Use**
 
 Clone the repo.
 Configure pipeline variables:
 
 ARM_CLIENT_ID, ARM_CLIENT_SECRET, ARM_TENANT_ID, ARM_SUBSCRIPTION_ID, ARM_ACCESS_KEY.
-
-
-Create Azure DevOps pipeline using azure-pipelines.yml.
-Merge changes to main → CI/CD runs automatically.
-This project focuses on automating the provisioning and management of Azure resources using Terraform integrated with Azure DevOps pipelines, while maintaining version control through Git. The goal is to implement a robust, scalable, and repeatable infrastructure deployment process following DevOps best practices.
