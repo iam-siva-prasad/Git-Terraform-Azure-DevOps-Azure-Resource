@@ -8,6 +8,15 @@ terraform {
   }
 }
 
+
+backend "azurerm" {
+    resource_group_name  = "1-ae2781de-playground-sandbox"
+    storage_account_name = "prodstoragesiva01"
+    container_name       = "state-file"
+    key                  = "prod.terraform.tfstate"
+  }
+}
+
 provider "azurerm" {
   features {}
 
