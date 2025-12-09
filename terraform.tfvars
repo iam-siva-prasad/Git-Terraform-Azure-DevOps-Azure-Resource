@@ -1,8 +1,8 @@
 
-subscription_id = "2213e8b1-dbc7-4d54-8aff-b5e315df5e5b"
-tenant_id       = "84f1e4ea-8554-43e1-8709-f0b8589ea118"
-client_id       = "842c4cf2-86e9-4d31-8206-750e58e61db7"
-client_secret   = "kSk8Q~zxhvODUK6AZs4jqvR3Ip1bxDVBBEn91a1-"
+subscription_id = "var.Sub_ID"
+tenant_id       = "Var.t_ID"
+client_id       = "var.c_ID"
+client_secret   = "c_Se"
 
 project_name        = "Project-windows-10"
 location            = "eastus"
