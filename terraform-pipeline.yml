@@ -1,28 +1,28 @@
+
 # azure-pipelines.yml
 trigger:
   branches:
     include:
       - main
 
-# Optional: run on PRs for validation only
 pr:
   branches:
     include:
       - main
 
 variables:
-  # >>> Update these to match your environment <<<
-  serviceConnection: 'YOUR-AZURE-SERVICE-CONNECTION-NAME'
-  tfWorkingDirectory: '.'              # root of the repo
-  backendResourceGroup: 'rg-tf-backend'
-  backendStorageAccount: 'sttfbackend1234'
-  backendContainer: 'tfstate'
+  tfWorkingDirectory: '.'              # repo root
+  backendResourceGroup: '1-ae2781de-playground-sandbox'
+  backendStorageAccount: 'prodstoragesiva01'
+  backendContainer: 'state-file'
   backendKey: 'prod.terraform.tfstate'
-  # Optional: subscription ID (only if your code requires it)
-  # subscriptionId: '00000000-0000-0000-0000-000000000000'
+  terraformVersion: '1.8.5'           # pin Terraform version
 
+# Self-hosted agent pool
 pool:
-  vmImage: 'ubuntu-latest'
+  name: 'self-pool'
+  demands:
+    - 'Agent.Name -equals 8e9ad4a5741c'   # optional: remove to allow any agent in the pool
 
 stages:
   - stage: ValidateAndPlan
@@ -32,53 +32,76 @@ stages:
         displayName: 'Validate & Plan'
         steps:
           - checkout: self
-            persistCredentials: true
 
-          # Install specific Terraform version (pin to your team's standard)
-          - task: TerraformInstaller@1
-            displayName: 'Install Terraform'
+          # Install Terraform into workspace (no sudo, no unzip)
+          - task: Bash@3
+            displayName: 'Install Terraform (workspace-local)'
             inputs:
-              terraformVersion: '1.8.5'
+              targetType: 'inline'
+              script: |
+                set -euo pipefail
 
-          # Terraform Init with remote backend in Azure Storage
-          - task: TerraformTaskV4@4
-            name: tf_init
-            displayName: 'Terraform Init'
+                PIPE_WS="$(Pipeline.Workspace)"
+                BIN_DIR="${PIPE_WS}/bin"
+                mkdir -p "${BIN_DIR}"
+
+                if [ -x "${BIN_DIR}/terraform" ]; then
+                  echo "Terraform already present in ${BIN_DIR}:"
+                  "${BIN_DIR}/terraform" -version
+                else
+                  echo "Downloading Terraform $(terraformVersion) to ${BIN_DIR} ..."
+                  cd "${PIPE_WS}"
+                  curl -fsSL "https://releases.hashicorp.com/terraform/$(terraformVersion)/terraform_$(terraformVersion)_linux_amd64.zip" -o terraform.zip
+                  python3 -m zipfile -e terraform.zip "${BIN_DIR}"
+                  rm -f terraform.zip
+                  chmod +x "${BIN_DIR}/terraform}"
+                  # Fix possible brace above if copy/paste: should be "${BIN_DIR}/terraform"
+                  "${BIN_DIR}/terraform" -version
+                fi
+
+                echo "##vso[task.setvariable variable=LOCAL_BIN_DIR;isOutput=false]${BIN_DIR}"
+
+          # === BACKEND INIT ONLY (use access key; DO NOT export SP vars here) ===
+          - task: Bash@3
+            displayName: 'Terraform Backend Init (access key, no az)'
             inputs:
-              provider: 'azurerm'
-              command: 'init'
-              workingDirectory: '$(tfWorkingDirectory)'
-              backendServiceArm: '$(serviceConnection)'
-              backendAzureRmResourceGroupName: '$(backendResourceGroup)'
-              backendAzureRmStorageAccountName: '$(backendStorageAccount)'
-              backendAzureRmContainerName: '$(backendContainer)'
-              backendAzureRmKey: '$(backendKey)'
+              targetType: 'inline'
+              script: |
+                set -euo pipefail
+                export PATH="$(LOCAL_BIN_DIR):$PATH"
 
-          # Terraform Validate
-          - task: TerraformTaskV4@4
-            name: tf_validate
-            displayName: 'Terraform Validate'
+                # Only backend auth via storage account access key
+                export ARM_ACCESS_KEY="$(ARM_ACCESS_KEY)"
+
+                terraform init \
+                  -backend-config="resource_group_name=$(backendResourceGroup)" \
+                  -backend-config="storage_account_name=$(backendStorageAccount)" \
+                  -backend-config="container_name=$(backendContainer)" \
+                  -backend-config="key=$(backendKey)" \
+                  -backend-config="access_key=$(ARM_ACCESS_KEY)"
+
+          # === PROVIDER AUTH + PLAN (after backend is initialized) ===
+          - task: Bash@3
+            displayName: 'Terraform Validate & Plan'
             inputs:
-              provider: 'azurerm'
-              command: 'validate'
-              workingDirectory: '$(tfWorkingDirectory)'
+              targetType: 'inline'
+              script: |
+                set -euo pipefail
+                export PATH="$(LOCAL_BIN_DIR):$PATH"
 
-          # Terraform Plan (generate a plan file)
-          - task: TerraformTaskV4@4
-            name: tf_plan
-            displayName: 'Terraform Plan'
-            inputs:
-              provider: 'azurerm'
-              command: 'plan'
-              workingDirectory: '$(tfWorkingDirectory)'
-              environmentServiceNameAzureRM: '$(serviceConnection)'
-              commandOptions: '-out=tfplan.out'
+                # Provider auth via Service Principal environment variables
+                export ARM_CLIENT_ID="$(ARM_CLIENT_ID)"
+                export ARM_CLIENT_SECRET="$(ARM_CLIENT_SECRET)"
+                export ARM_TENANT_ID="$(ARM_TENANT_ID)"
+                export ARM_SUBSCRIPTION_ID="$(ARM_SUBSCRIPTION_ID)"
 
-          # Publish plan as an artifact (reviewable)
+                terraform validate
+                terraform plan -out=tfplan.out
+
           - task: PublishBuildArtifacts@1
             displayName: 'Publish Plan Artifact'
             inputs:
-              PathtoPublish: 'tfplan.out'   # root, since plan outputs in current dir
+              PathtoPublish: 'tfplan.out'
               ArtifactName: 'tfplan'
               publishLocation: 'Container'
 
@@ -89,41 +112,70 @@ stages:
     jobs:
       - deployment: apply
         displayName: 'Apply Terraform'
-        environment: 'prod'   # Add a manual approval in DevOps Environments for safety
+        environment: 'prod'   # add approval in Pipelines → Environments → prod
         strategy:
           runOnce:
             deploy:
               steps:
                 - checkout: self
 
-                - task: TerraformInstaller@1
-                  displayName: 'Install Terraform'
+                - task: Bash@3
+                  displayName: 'Install Terraform (workspace-local)'
                   inputs:
-                    terraformVersion: '1.8.5'
+                    targetType: 'inline'
+                    script: |
+                      set -euo pipefail
 
-                - task: TerraformTaskV4@4
-                  displayName: 'Terraform Init (Apply Stage)'
-                  inputs:
-                    provider: 'azurerm'
-                    command: 'init'
-                    workingDirectory: '$(tfWorkingDirectory)'
-                    backendServiceArm: '$(serviceConnection)'
-                    backendAzureRmResourceGroupName: '$(backendResourceGroup)'
-                    backendAzureRmStorageAccountName: '$(backendStorageAccount)'
-                    backendAzureRmContainerName: '$(backendContainer)'
-                    backendAzureRmKey: '$(backendKey)'
+                      PIPE_WS="$(Pipeline.Workspace)"
+                      BIN_DIR="${PIPE_WS}/bin"
+                      mkdir -p "${BIN_DIR}"
 
-                # Download plan artifact from previous stage
+                      if [ -x "${BIN_DIR}/terraform" ]; then
+                        echo "Terraform already present in ${BIN_DIR}:"
+                        "${BIN_DIR}/terraform" -version
+                      else
+                        echo "Downloading Terraform $(terraformVersion) to ${BIN_DIR} ..."
+                        cd "${PIPE_WS}"
+                        curl -fsSL "https://releases.hashicorp.com/terraform/$(terraformVersion)/terraform_$(terraformVersion)_linux_amd64.zip" -o terraform.zip
+                        python3 -m zipfile -e terraform.zip "${BIN_DIR}"
+                        rm -f terraform.zip
+                        chmod +x "${BIN_DIR}/terraform"
+                        "${BIN_DIR}/terraform" -version
+                      fi
+
+                      echo "##vso[task.setvariable variable=LOCAL_BIN_DIR;isOutput=false]${BIN_DIR}"
+
                 - download: current
                   artifact: tfplan
                   displayName: 'Download Plan Artifact'
 
-                # Apply the previously generated plan
-                - task: TerraformTaskV4@4
-                  displayName: 'Terraform Apply'
+                # Re-init backend using access key (safe, idempotent) and apply
+                - task: Bash@3
+                  displayName: 'Terraform Init (backend) & Apply'
                   inputs:
-                    provider: 'azurerm'
-                    command: 'apply'
-                    workingDirectory: '$(tfWorkingDirectory)'
-                    environmentServiceNameAzureRM: '$(serviceConnection)'
-                    commandOptions: 'tfplan.out'
+                    targetType: 'inline'
+                    script: |
+                      set -euo pipefail
+                      export PATH="$(LOCAL_BIN_DIR):$PATH"
+
+                      # Backend auth only
+                      export ARM_ACCESS_KEY="$(ARM_ACCESS_KEY)"
+                      terraform init \
+                        -backend-config="resource_group_name=$(backendResourceGroup)" \
+                        -backend-config="storage_account_name=$(backendStorageAccount)" \
+                        -backend-config="container_name=$(backendContainer)" \
+                        -backend-config="key=$(backendKey)" \
+                        -backend-config="access_key=$(ARM_ACCESS_KEY)"
+
+                      # Provider auth via SP for resource operations
+                      export ARM_CLIENT_ID="$(ARM_CLIENT_ID)"
+                      export ARM_CLIENT_SECRET="$(ARM_CLIENT_SECRET)"
+                      export ARM_TENANT_ID="$(ARM_TENANT_ID)"
+                      export ARM_SUBSCRIPTION_ID="$(ARM_SUBSCRIPTION_ID)"
+
+                      # Use the plan file from the downloaded artifact folder
+                      PLAN_PATH="$(Pipeline.Workspace)/tfplan/tfplan.out"
+                      echo "Applying plan at: ${PLAN_PATH}"
+                      ls -l "$(Pipeline.Workspace)/tfplan" || true
+
+                      terraform apply -input=false -auto-approve "${PLAN_PATH}"
