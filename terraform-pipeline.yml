@@ -1,0 +1,130 @@
+
+# azure-pipelines.yml
+trigger:
+  branches:
+    include:
+      - main
+
+# Optional: run on PRs for validation only
+pr:
+  branches:
+    include:
+      - main
+
+variables:
+  # >>> Update these to match your environment <<<
+  serviceConnection: 'YOUR-AZURE-SERVICE-CONNECTION-NAME'
+  tfWorkingDirectory: '.'              # root of the repo
+  backendResourceGroup: 'rg-tf-backend'
+  backendStorageAccount: 'sttfbackend1234'
+  backendContainer: 'tfstate'
+  backendKey: 'prod.terraform.tfstate'
+  # Optional: subscription ID (only if your code requires it)
+  # subscriptionId: '00000000-0000-0000-0000-000000000000'
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+stages:
+  - stage: ValidateAndPlan
+    displayName: 'Terraform Validate & Plan'
+    jobs:
+      - job: plan
+        displayName: 'Validate & Plan'
+        steps:
+          - checkout: self
+            persistCredentials: true
+
+          # Install specific Terraform version (pin to your team's standard)
+          - task: TerraformInstaller@1
+            displayName: 'Install Terraform'
+            inputs:
+              terraformVersion: '1.8.5'
+
+          # Terraform Init with remote backend in Azure Storage
+          - task: TerraformTaskV4@4
+            name: tf_init
+            displayName: 'Terraform Init'
+            inputs:
+              provider: 'azurerm'
+              command: 'init'
+              workingDirectory: '$(tfWorkingDirectory)'
+              backendServiceArm: '$(serviceConnection)'
+              backendAzureRmResourceGroupName: '$(backendResourceGroup)'
+              backendAzureRmStorageAccountName: '$(backendStorageAccount)'
+              backendAzureRmContainerName: '$(backendContainer)'
+              backendAzureRmKey: '$(backendKey)'
+
+          # Terraform Validate
+          - task: TerraformTaskV4@4
+            name: tf_validate
+            displayName: 'Terraform Validate'
+            inputs:
+              provider: 'azurerm'
+              command: 'validate'
+              workingDirectory: '$(tfWorkingDirectory)'
+
+          # Terraform Plan (generate a plan file)
+          - task: TerraformTaskV4@4
+            name: tf_plan
+            displayName: 'Terraform Plan'
+            inputs:
+              provider: 'azurerm'
+              command: 'plan'
+              workingDirectory: '$(tfWorkingDirectory)'
+              environmentServiceNameAzureRM: '$(serviceConnection)'
+              commandOptions: '-out=tfplan.out'
+
+          # Publish plan as an artifact (reviewable)
+          - task: PublishBuildArtifacts@1
+            displayName: 'Publish Plan Artifact'
+            inputs:
+              PathtoPublish: 'tfplan.out'   # root, since plan outputs in current dir
+              ArtifactName: 'tfplan'
+              publishLocation: 'Container'
+
+  - stage: Apply
+    displayName: 'Terraform Apply'
+    dependsOn: ValidateAndPlan
+    condition: succeeded()
+    jobs:
+      - deployment: apply
+        displayName: 'Apply Terraform'
+        environment: 'prod'   # Add a manual approval in DevOps Environments for safety
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - checkout: self
+
+                - task: TerraformInstaller@1
+                  displayName: 'Install Terraform'
+                  inputs:
+                    terraformVersion: '1.8.5'
+
+                - task: TerraformTaskV4@4
+                  displayName: 'Terraform Init (Apply Stage)'
+                  inputs:
+                    provider: 'azurerm'
+                    command: 'init'
+                    workingDirectory: '$(tfWorkingDirectory)'
+                    backendServiceArm: '$(serviceConnection)'
+                    backendAzureRmResourceGroupName: '$(backendResourceGroup)'
+                    backendAzureRmStorageAccountName: '$(backendStorageAccount)'
+                    backendAzureRmContainerName: '$(backendContainer)'
+                    backendAzureRmKey: '$(backendKey)'
+
+                # Download plan artifact from previous stage
+                - download: current
+                  artifact: tfplan
+                  displayName: 'Download Plan Artifact'
+
+                # Apply the previously generated plan
+                - task: TerraformTaskV4@4
+                  displayName: 'Terraform Apply'
+                  inputs:
+                    provider: 'azurerm'
+                    command: 'apply'
+                    workingDirectory: '$(tfWorkingDirectory)'
+                    environmentServiceNameAzureRM: '$(serviceConnection)'
+                    commandOptions: 'tfplan.out'
