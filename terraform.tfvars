@@ -4,9 +4,9 @@ tenant_id       = "Var.t_ID"
 client_id       = "var.c_ID"
 client_secret   = "c_Se"
 
-project_name        = "Project-windows-10"
+project_name        = "Proj-win-10"
 location            = "eastus"
-resource_group_name = "1-52574a9e-playground-sandbox"
+resource_group_name = "1-ae2781de-playground-sandbox"
 
 vnet_address_space      = ["10.20.0.0/16"]
 subnet_address_prefixes = ["10.20.1.0/24"]
