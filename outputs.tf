@@ -1,4 +1,3 @@
-
 output "vm_id" {
   description = "VM resource ID"
   value       = azurerm_windows_virtual_machine.vm.id
