@@ -9,6 +9,11 @@ This project implements a fully automated CI/CD pipeline using Azure DevOps and 
 ✅ Key Features
 
 
+![
+Git-Terraform-Azure-DevOps-Azure-Resource.png](<img width="1536" height="1024" alt="image" src="https://github.com/user-attachments/assets/fbb3290b-1489-4d55-8abb-2b4a0a77144a" />
+)
+
+
 **Continuous Integration (CI)**
 
 Automatically triggered when changes are pushed and merged into the main branch in Azure Repos.
